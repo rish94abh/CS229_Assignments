@@ -1,13 +1,6 @@
-import numpy as np
-import ast
 import matplotlib.pyplot as plt
+import numpy as np
 
-# Scaling for lambda to plot
-reg_list = [0, 1, 5, 10, 50, 250, 500, 1000]
-
-def from_np_array(array_string):
-    array_string = ','.join(array_string.replace('[ ', '[').split())
-    return np.array(ast.literal_eval(array_string))
 
 def add_intercept(x):
     """Add intercept to matrix x.
@@ -23,6 +16,7 @@ def add_intercept(x):
     new_x[:, 1:] = x
 
     return new_x
+
 
 def load_dataset(csv_path, label_col='y', add_intercept=False):
     """Load dataset from a CSV file.
@@ -48,25 +42,14 @@ def load_dataset(csv_path, label_col='y', add_intercept=False):
                          .format(label_col, allowed_label_cols))
 
     # Load headers
-    csv_fh = open(csv_path, 'r')
-    headers = csv_fh.readline().strip().split(',')
+    with open(csv_path, 'r') as csv_fh:
+        headers = csv_fh.readline().strip().split(',')
 
     # Load features and labels
     x_cols = [i for i in range(len(headers)) if headers[i].startswith('x')]
     l_cols = [i for i in range(len(headers)) if headers[i] == label_col]
-
-    lines = csv_fh.read()
-    x_raw = lines.split('"')[1::2]
-    y_raw = lines.split('"')[2::2]
-    inputs = []
-    labels = []
-
-    for i in range(len(x_raw)):
-        inputs.append([float(x) for x in x_raw[i].replace(']','').replace('[','').split()])
-        labels.append(float(y_raw[i][1:-1]))
-
-    inputs = np.asarray(inputs)
-    labels = np.asarray(labels)
+    inputs = np.loadtxt(csv_path, delimiter=',', skiprows=1, usecols=x_cols)
+    labels = np.loadtxt(csv_path, delimiter=',', skiprows=1, usecols=l_cols)
 
     if inputs.ndim == 1:
         inputs = np.expand_dims(inputs, -1)
@@ -76,41 +59,36 @@ def load_dataset(csv_path, label_col='y', add_intercept=False):
 
     return inputs, labels
 
-def plot(val_err, save_path, n_list):
-    """Plot dataset size vs. val err (a single curve)
+def plot_contour(predict_fn):
+    """Plot a contour given the provided prediction function"""
+    x, y = np.meshgrid(np.linspace(0, 4, num=20), np.linspace(0, 4, num=20))
+    z = np.zeros(x.shape)
+
+    for i in range(x.shape[0]):
+        for j in range(y.shape[1]):
+            z[i, j] = predict_fn(np.array([[1, x[i, j], y[i, j]]]))[0]
+
+    plt.contourf(x, y, z, levels=[-float('inf'), 0, float('inf')], colors=['orange', 'cyan'])
+
+def plot(x, y, predict_fn, save_path, correction=1.0):
+    """Plot dataset and fitted logistic regression parameters.
 
     Args:
-        val_err: list of validation erro
+        x: Matrix of training examples, one per row.
+        y: Vector of labels in {0, 1}.
         save_path: Path to save the plot.
-        n_list: List of trainset sizes.
+        correction: Correction factor to apply, if any.
     """
     # Plot dataset
     plt.figure()
-    plt.plot(n_list, val_err, linewidth=2, label='lambda=0')
+    plt.plot(x[y == 1, -2], x[y == 1, -1], 'bx', linewidth=2)
+    plt.plot(x[y == 0, -2], x[y == 0, -1], 'go', linewidth=2)
+
+    plot_contour(predict_fn)
 
     # Add labels and save to disk
-    plt.xlabel('Num Samples')
-    plt.ylabel('Validation Err')
-    plt.ylim(0,2)
-    plt.legend()
+    plt.xlabel('x1')
+    plt.ylabel('x2')
     plt.savefig(save_path)
 
-def plot_all(val_err, save_path, n_list):
-    """Plot dataset size vs. val err for different reg strengths
 
-    Args:
-        val_err: Matrix of validation erros, row.
-        save_path: Path to save the plot.
-        n_list: List of trainset sizes.
-    """
-    # Plot dataset
-    plt.figure()
-    for i in range(len(reg_list)):
-        plt.plot(n_list, val_err[i], linewidth=2, label='lambda=%0.0f'%reg_list[i])
-
-    # Add labels and save to disk
-    plt.xlabel('Num Samples')
-    plt.ylabel('Validation Err')
-    plt.ylim(0,2)
-    plt.legend()
-    plt.savefig(save_path)
