@@ -1,45 +1,17 @@
-import numpy as np
-import ast
 import matplotlib.pyplot as plt
+import numpy as np
 
-# Scaling for lambda to plot
-reg_list = [0, 1, 5, 10, 50, 250, 500, 1000]
-
-def from_np_array(array_string):
-    array_string = ','.join(array_string.replace('[ ', '[').split())
-    return np.array(ast.literal_eval(array_string))
-
-def add_intercept(x):
-    """Add intercept to matrix x.
-
-    Args:
-        x: 2D NumPy array.
-
-    Returns:
-        New matrix same as x with 1's in the 0th column.
-    """
-    new_x = np.zeros((x.shape[0], x.shape[1] + 1), dtype=x.dtype)
-    new_x[:, 0] = 1
-    new_x[:, 1:] = x
-
-    return new_x
-
-def load_dataset(csv_path, label_col='y', add_intercept=False):
+def load_dataset(csv_path, label_col='y'):
     """Load dataset from a CSV file.
 
     Args:
          csv_path: Path to CSV file containing dataset.
          label_col: Name of column to use as labels (should be 'y' or 't').
-         add_intercept: Add an intercept entry to x-values.
 
     Returns:
         xs: Numpy array of x-values (inputs).
         ys: Numpy array of y-values (labels).
     """
-
-    def add_intercept_fn(x):
-        global add_intercept
-        return add_intercept(x)
 
     # Validate label_col argument
     allowed_label_cols = ('y', 't')
@@ -48,69 +20,79 @@ def load_dataset(csv_path, label_col='y', add_intercept=False):
                          .format(label_col, allowed_label_cols))
 
     # Load headers
-    csv_fh = open(csv_path, 'r')
-    headers = csv_fh.readline().strip().split(',')
+    with open(csv_path, 'r') as csv_fh:
+        headers = csv_fh.readline().strip().split(',')
 
     # Load features and labels
     x_cols = [i for i in range(len(headers)) if headers[i].startswith('x')]
     l_cols = [i for i in range(len(headers)) if headers[i] == label_col]
-
-    lines = csv_fh.read()
-    x_raw = lines.split('"')[1::2]
-    y_raw = lines.split('"')[2::2]
-    inputs = []
-    labels = []
-
-    for i in range(len(x_raw)):
-        inputs.append([float(x) for x in x_raw[i].replace(']','').replace('[','').split()])
-        labels.append(float(y_raw[i][1:-1]))
-
-    inputs = np.asarray(inputs)
-    labels = np.asarray(labels)
+    inputs = np.loadtxt(csv_path, delimiter=',', skiprows=1, usecols=x_cols)
+    labels = np.loadtxt(csv_path, delimiter=',', skiprows=1, usecols=l_cols)
 
     if inputs.ndim == 1:
         inputs = np.expand_dims(inputs, -1)
 
-    if add_intercept:
-        inputs = add_intercept_fn(inputs)
-
     return inputs, labels
 
-def plot(val_err, save_path, n_list):
-    """Plot dataset size vs. val err (a single curve)
+
+def generate_data_linear(n, d):
+    np.random.seed(0)
+    beta_star = np.random.normal(size=d) / np.sqrt(d)
+    
+    X = np.random.normal(size=(n,d))
+    Y = X.dot(beta_star)
+    
+    X_val = np.random.normal(size=(n,d))
+    Y_val = X_val.dot(beta_star)
+    return X, Y, X_val, Y_val
+
+def generate_data_QP(n, d):
+    np.random.seed(0)
+    beta_star = np.ones(5)
+    beta_star.resize(d)
+    np.random.shuffle(beta_star)
+    
+    X = np.random.normal(size=(n,d))
+    Y = X.dot(beta_star)
+    
+    X_val = np.random.normal(size=(n,d))
+    Y_val = X_val.dot(beta_star)
+    return X, Y, X_val, Y_val
+
+def plot_points(x, y, save_path):
+    """Plot the validation error vs. norm of the solution
+    part (c) of Implicit Regularization
 
     Args:
-        val_err: list of validation erro
-        save_path: Path to save the plot.
-        n_list: List of trainset sizes.
+        x: list of norms
+        y: list of validation errors
+        save_path: path to save the plot
     """
-    # Plot dataset
     plt.figure()
-    plt.plot(n_list, val_err, linewidth=2, label='lambda=0')
-
-    # Add labels and save to disk
-    plt.xlabel('Num Samples')
-    plt.ylabel('Validation Err')
-    plt.ylim(0,2)
-    plt.legend()
+    plt.scatter(x, y)
+    plt.xlabel('norm')
+    plt.ylabel('validation error')
     plt.savefig(save_path)
 
-def plot_all(val_err, save_path, n_list):
-    """Plot dataset size vs. val err for different reg strengths
+def plot_training_and_validation_curves(logs, save_path, label):
+    """Plot multiple training/validation curves
+
+    For better visualization, we add the following trick:
+        1. we only plot one point every 10 steps
 
     Args:
-        val_err: Matrix of validation erros, row.
-        save_path: Path to save the plot.
-        n_list: List of trainset sizes.
+        logs: list of (steps, training error, validation error) tuple
+        save_path: path to save the plot
+        label: list of labels
     """
-    # Plot dataset
     plt.figure()
-    for i in range(len(reg_list)):
-        plt.plot(n_list, val_err[i], linewidth=2, label='lambda=%0.0f'%reg_list[i])
-
-    # Add labels and save to disk
-    plt.xlabel('Num Samples')
-    plt.ylabel('Validation Err')
-    plt.ylim(0,2)
-    plt.legend()
-    plt.savefig(save_path)
+    for i in range(len(logs)):
+        log = logs[i]
+        plt.plot(log[0][::10], log[2][::10], label = "validation error, " + label[i])
+    for i in range(len(logs)):
+        log = logs[i]
+        plt.plot(log[0][::10], log[1][::10], '--', label = "training error, " + label[i])
+    plt.ylim([0, 0.5])
+    plt.xlabel('steps')
+    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    plt.savefig(save_path, bbox_inches='tight')
